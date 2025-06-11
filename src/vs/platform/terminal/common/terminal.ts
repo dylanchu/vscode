@@ -92,6 +92,9 @@ export const enum TerminalSettingId {
 	EnvWindows = 'terminal.integrated.env.windows',
 	EnvironmentChangesIndicator = 'terminal.integrated.environmentChangesIndicator',
 	EnvironmentChangesRelaunch = 'terminal.integrated.environmentChangesRelaunch',
+	StrLaunchArgsMacOs = 'terminal.integrated.strLaunchArgs.osx',
+	StrLaunchArgsLinux = 'terminal.integrated.strLaunchArgs.linux',
+	StrLaunchArgsWindows = 'terminal.integrated.strLaunchArgs.windows',
 	ShowExitAlert = 'terminal.integrated.showExitAlert',
 	SplitCwd = 'terminal.integrated.splitCwd',
 	WindowsEnableConpty = 'terminal.integrated.windowsEnableConpty',
@@ -895,6 +898,7 @@ export interface ITerminalProfile {
 	 */
 	isFromPath?: boolean;
 	args?: string | string[] | undefined;
+	execStrArgs?: string[] | undefined;
 	env?: ITerminalEnvironment;
 	overrideName?: boolean;
 	color?: string;

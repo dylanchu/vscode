@@ -44,7 +44,7 @@ import { CommandOptions, CommandString, ContributedTask, CustomTask, DependsOrde
 import { ITerminalGroupService, ITerminalInstance, ITerminalService } from '../../terminal/browser/terminal.js';
 import { VSCodeOscProperty, VSCodeOscPt, VSCodeSequence } from '../../terminal/browser/terminalEscapeSequences.js';
 import { TerminalProcessExtHostProxy } from '../../terminal/browser/terminalProcessExtHostProxy.js';
-import { ITerminalProfileResolverService, TERMINAL_VIEW_ID } from '../../terminal/common/terminal.js';
+import { ITerminalConfiguration, ITerminalProfileResolverService, TERMINAL_VIEW_ID } from '../../terminal/common/terminal.js';
 import { IConfigurationResolverService } from '../../../services/configurationResolver/common/configurationResolver.js';
 import { IWorkbenchEnvironmentService } from '../../../services/environment/common/environmentService.js';
 import { IOutputService } from '../../../services/output/common/output.js';
@@ -52,6 +52,7 @@ import { IPaneCompositePartService } from '../../../services/panecomposite/brows
 import { IPathService } from '../../../services/path/common/pathService.js';
 import { RerunForActiveTerminalCommandId, rerunTaskIcon } from './task.contribution.js';
 import { IContextKey, IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
+import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 
 interface ITerminalData {
 	terminal: ITerminalInstance;
@@ -177,9 +178,9 @@ export class TerminalTaskSystem extends Disposable implements ITaskSystem {
 	};
 
 	private static _osShellQuotes: IStringDictionary<IShellQuotingOptions> = {
-		'Linux': TerminalTaskSystem._shellQuotes['bash'],
-		'Mac': TerminalTaskSystem._shellQuotes['bash'],
-		'Windows': TerminalTaskSystem._shellQuotes['powershell']
+		'Linux': this._shellQuotes['bash'],
+		'Mac': this._shellQuotes['bash'],
+		'Windows': this._shellQuotes['powershell']
 	};
 
 	private _activeTasks: IStringDictionary<IActiveTerminalData>;
@@ -220,6 +221,7 @@ export class TerminalTaskSystem extends Disposable implements ITaskSystem {
 	}
 
 	constructor(
+		@IConfigurationService private readonly _configurationService: IConfigurationService,
 		private _terminalService: ITerminalService,
 		private _terminalGroupService: ITerminalGroupService,
 		private _outputService: IOutputService,
@@ -1148,6 +1150,36 @@ export class TerminalTaskSystem extends Disposable implements ITaskSystem {
 		return needsFolderQualification ? task.getQualifiedLabel() : (task.configurationProperties.name || '');
 	}
 
+	private _getStrLaunchArgsFromConfig(platform: Platform.Platform, basename: string): string[] {
+		const config = this._configurationService.getValue<ITerminalConfiguration>('terminal.integrated');
+		const strLaunchArgs = Platform.isWindows ? (config.strLaunchArgs?.windows || {}) : Platform.isMacintosh ? (config.strLaunchArgs?.osx || {}) : (config.strLaunchArgs?.linux || {});
+		// const defaultConfig = this._configurationService.inspect('terminal.integrated.strLaunchArgs.windows');
+		// console.warn('configuration details:', JSON.stringify({
+		// 	defaultValue: defaultConfig.defaultValue,
+		// 	userValue: defaultConfig.userValue,
+		// 	workspaceValue: defaultConfig.workspaceValue
+		// }, null, 2));
+		if (Object.keys(strLaunchArgs).length > 0) {
+			const args = strLaunchArgs[basename] || strLaunchArgs['fallback'];
+			if (args) {
+				return args;
+			}
+		}
+		if (Platform.isWindows) {
+			const defaults: { [executable: string]: string[] } = {
+				'pwsh.exe': ['-Command'],
+				'nu.exe': ['-c'],
+				'bash.exe': ['-c'],
+				'zsh.exe': ['-c'],
+				'wsl.exe': ['-e'],
+				'cmd.exe': ['/d', '/c'],
+			};
+			return defaults[basename] || [];
+		} else {
+			return ['-c'];
+		}
+	}
+
 	private async _createShellLaunchConfig(task: CustomTask | ContributedTask, workspaceFolder: IWorkspaceFolder | undefined, variableResolver: VariableResolver, platform: Platform.Platform, options: CommandOptions, command: CommandString, args: CommandString[], waitOnExit: WaitOnExitValue): Promise<IShellLaunchConfig | undefined> {
 		let shellLaunchConfig: IShellLaunchConfig;
 		const isShellCommand = task.command.runtime === RuntimeType.Shell;
@@ -1216,8 +1248,13 @@ export class TerminalTaskSystem extends Disposable implements ITaskSystem {
 				shellLaunchConfig.args = [];
 			}
 			const shellArgs = Array.isArray(shellLaunchConfig.args) ? <string[]>shellLaunchConfig.args.slice(0) : [shellLaunchConfig.args];
-			const toAdd: string[] = [];
 			const basename = path.posix.basename((await this._pathService.fileURI(shellLaunchConfig.executable!)).path).toLowerCase();
+			const toAdd: string[] = shellSpecified ? [] : this._getStrLaunchArgsFromConfig(platform, basename);
+			// defaultProfile might be "terminal.integrated.automationProfile.windows" or "terminal.integrated.defaultProfile.windows"(from "terminal.integrated.profiles.windows")
+			console.warn(`@@@@@@ defaultProfile.args [${basename}]:`, JSON.stringify(defaultProfile.args));
+			console.warn(`@@@@@@ defaultProfile.execStrArgs [${basename}]:`, JSON.stringify(defaultProfile.execStrArgs));
+			console.warn(`@@@@ args [${basename}]:`, JSON.stringify(args));
+			console.warn(`@@@@ toAdd [${basename}]:`, JSON.stringify(toAdd));
 			const commandLine = this._buildShellCommandLine(platform, basename, shellOptions, command, originalCommand, args);
 			let windowsShellArgs: boolean = false;
 			if (platform === Platform.Platform.Windows) {
@@ -1227,59 +1264,27 @@ export class TerminalTaskSystem extends Disposable implements ITaskSystem {
 				if (basename === 'cmd.exe' && ((options.cwd && isUNC(options.cwd)) || (!options.cwd && isUNC(userHome.fsPath)))) {
 					return undefined;
 				}
-				if ((basename === 'powershell.exe') || (basename === 'pwsh.exe')) {
-					if (!shellSpecified) {
-						toAdd.push('-Command');
-					}
-				} else if ((basename === 'bash.exe') || (basename === 'zsh.exe')) {
+				if ((basename === 'bash.exe') || (basename === 'zsh.exe')) {
 					windowsShellArgs = false;
-					if (!shellSpecified) {
-						toAdd.push('-c');
-					}
-				} else if (basename === 'wsl.exe') {
-					if (!shellSpecified) {
-						toAdd.push('-e');
-					}
-				} else if (basename === 'nu.exe') {
-					if (!shellSpecified) {
-						toAdd.push('-c');
-					}
-				} else {
-					if (!shellSpecified) {
-						toAdd.push('/d', '/c');
-					}
-				}
-			} else {
-				if (!shellSpecified) {
-					// Under Mac remove -l to not start it as a login shell.
-					if (platform === Platform.Platform.Mac) {
-						// Background on -l on osx https://github.com/microsoft/vscode/issues/107563
-						// TODO: Handle by pulling the default terminal profile?
-						// const osxShellArgs = this._configurationService.inspect(TerminalSettingId.ShellArgsMacOs);
-						// if ((osxShellArgs.user === undefined) && (osxShellArgs.userLocal === undefined) && (osxShellArgs.userLocalValue === undefined)
-						// 	&& (osxShellArgs.userRemote === undefined) && (osxShellArgs.userRemoteValue === undefined)
-						// 	&& (osxShellArgs.userValue === undefined) && (osxShellArgs.workspace === undefined)
-						// 	&& (osxShellArgs.workspaceFolder === undefined) && (osxShellArgs.workspaceFolderValue === undefined)
-						// 	&& (osxShellArgs.workspaceValue === undefined)) {
-						// 	const index = shellArgs.indexOf('-l');
-						// 	if (index !== -1) {
-						// 		shellArgs.splice(index, 1);
-						// 	}
-						// }
-					}
-					toAdd.push('-c');
 				}
 			}
 			const combinedShellArgs = this._addAllArgument(toAdd, shellArgs);
-			combinedShellArgs.push(commandLine);
-			shellLaunchConfig.args = windowsShellArgs ? combinedShellArgs.join(' ') : combinedShellArgs;
+			if (windowsShellArgs) {
+				combinedShellArgs.push('"');
+				combinedShellArgs.push(commandLine);
+				combinedShellArgs.push('"');
+				shellLaunchConfig.args = combinedShellArgs.join(' ');
+			} else {
+				combinedShellArgs.push(commandLine);
+				shellLaunchConfig.args = combinedShellArgs;
+			}
+			console.warn(`--------shellLaunchConfig.args:`, JSON.stringify(shellLaunchConfig.args));
 			if (task.command.presentation && task.command.presentation.echo) {
 				if (needsFolderQualification && workspaceFolder) {
 					const folder = cwd && typeof cwd === 'object' && 'path' in cwd ? path.basename(cwd.path) : workspaceFolder.name;
 					shellLaunchConfig.initialText = this.taskShellIntegrationStartSequence(cwd) + formatMessageForTerminal(nls.localize({
 						key: 'task.executingInFolder',
 						comment: ['The workspace folder the task is running in', 'The task command line or label']
-
 					}, 'Executing task in folder {0}: {1}', folder, commandLine), { excludeLeadingNewLine: true }) + this.taskShellIntegrationOutputSequence;
 				} else {
 					shellLaunchConfig.initialText = this.taskShellIntegrationStartSequence(cwd) + formatMessageForTerminal(nls.localize({

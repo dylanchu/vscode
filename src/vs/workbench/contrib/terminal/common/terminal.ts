@@ -137,6 +137,11 @@ export interface ITerminalConfiguration {
 		osx: string | null;
 		windows: string | null;
 	};
+	strLaunchArgs: {
+		windows: { [executable: string]: string[] };
+		linux: { [executable: string]: string[] };
+		osx: { [executable: string]: string[] };
+	};
 	useWslProfiles: boolean;
 	altClickMovesCursor: boolean;
 	macOptionIsMeta: boolean;

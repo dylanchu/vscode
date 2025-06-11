@@ -310,6 +310,14 @@ export abstract class BaseTerminalProfileResolverService extends Disposable impl
 			}
 		}
 
+		if (profile.execStrArgs) {
+			if (typeof profile.execStrArgs === 'string') {
+				profile.execStrArgs = [await this._resolveVariables(profile.execStrArgs, env, lastActiveWorkspace)];
+			} else {
+				profile.execStrArgs = await Promise.all(profile.execStrArgs.map(arg => this._resolveVariables(arg, env, lastActiveWorkspace)));
+			}
+		}
+
 		return profile;
 	}
 

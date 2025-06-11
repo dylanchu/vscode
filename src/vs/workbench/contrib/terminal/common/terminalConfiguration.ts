@@ -462,6 +462,48 @@ const terminalConfiguration: IConfigurationNode = {
 			},
 			default: {}
 		},
+		[TerminalSettingId.StrLaunchArgsWindows]: {
+			type: 'object',
+			markdownDescription: localize(
+				'terminal.integrated.strLaunchArgs.windows',
+				"A dictionary mapping executable names to their default launch arguments on Windows. Example: `{ \"pwsh.exe\": [\"-Command\"], \"nu.exe\": [\"-c\"] }`"
+			),
+			default: { 'pwsh.exe': ['-Command'], 'nu.exe': ['-c'], 'bash.exe': ['-c'], 'zsh.exe': ['-c'], 'wsl.exe': ['-e'], 'fallback': [] },
+			additionalProperties: {
+				type: 'array',
+				items: {
+					type: 'string'
+				}
+			}
+		},
+		[TerminalSettingId.StrLaunchArgsLinux]: {
+			type: 'object',
+			markdownDescription: localize(
+				'terminal.integrated.strLaunchArgs.linux',
+				"A dictionary mapping executable names to their default launch arguments on Linux. Example: `{ \"zsh\": [\"-c\"], \"nu\": [\"-c\"] }`"
+			),
+			default: { 'fallback': ['-c'] },
+			additionalProperties: {
+				type: 'array',
+				items: {
+					type: 'string'
+				}
+			}
+		},
+		[TerminalSettingId.StrLaunchArgsMacOs]: {
+			type: 'object',
+			markdownDescription: localize(
+				'terminal.integrated.strLaunchArgs.osx',
+				"A dictionary mapping executable names to their default launch arguments on macOS. Example: `{ \"zsh\": [\"-c\"], \"nu\": [\"-c\"] }`"
+			),
+			default: { 'fallback': ['-c'] },
+			additionalProperties: {
+				type: 'array',
+				items: {
+					type: 'string'
+				}
+			}
+		},
 		[TerminalSettingId.EnvironmentChangesIndicator]: {
 			markdownDescription: localize('terminal.integrated.environmentChangesIndicator', "Whether to display the environment changes indicator on each terminal which explains whether extensions have made, or want to make changes to the terminal's environment."),
 			type: 'string',
